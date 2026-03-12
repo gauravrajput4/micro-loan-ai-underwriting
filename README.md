@@ -111,62 +111,6 @@ mongod --dbpath /path/to/data/directory
 3. Get connection string
 4. Update `MONGO_URI` in backend/.env
 
-## 📁 Project Structure
-
-```
-personal-loan-underwriting/
-├── backend/
-│   ├── main.py                 # FastAPI application
-│   ├── requirements.txt        # Python dependencies
-│   ├── .env.example           # Environment variables template
-│   ├── database/
-│   │   └── mongodb.py         # MongoDB connection
-│   ├── routes/
-│   │   ├── auth_routes.py     # Authentication endpoints
-│   │   ├── loan_routes.py     # Loan application endpoints
-│   │   ├── upload_routes.py   # File upload endpoints
-│   │   └── dashboard_routes.py # Admin dashboard endpoints
-│   ├── services/
-│   │   ├── bank_statement_analyzer.py  # Financial data extraction
-│   │   ├── credit_score_engine.py      # Credit score calculation
-│   │   ├── loan_recommendation.py      # Loan amount recommendation
-│   │   ├── emi_calculator.py           # EMI calculation
-│   │   └── ai_explanation.py           # AI decision explanation
-│   └── ml/
-│       ├── train_model.py     # Model training script
-│       ├── loan_model.pkl     # Trained Random Forest model
-│       └── scaler.pkl         # Feature scaler
-│
-└── frontend/
-    ├── package.json
-    ├── vite.config.js
-    ├── tailwind.config.js
-    ├── index.html
-    └── src/
-        ├── main.jsx           # Entry point
-        ├── App.jsx            # Main app component
-        ├── index.css          # Global styles
-        ├── utils/
-        │   └── api.js         # API client
-        ├── animations/
-        │   ├── pageTransitions.js
-        │   └── hoverEffects.js
-        ├── components/
-        │   ├── AnimatedCard.jsx
-        │   ├── LoanForm.jsx
-        │   ├── BankUpload.jsx
-        │   ├── EmiCalculator.jsx
-        │   └── CreditScoreCard.jsx
-        └── pages/
-            ├── LandingPage.jsx
-            ├── Register.jsx
-            ├── Login.jsx
-            ├── UserDashboard.jsx
-            ├── AdminDashboard.jsx
-            ├── LoanApplication.jsx
-            ├── LoanResult.jsx
-            └── EMICalculatorPage.jsx
-```
 
 ## 🔑 API Endpoints
 
