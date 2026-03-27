@@ -1,27 +1,75 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 import pickle
 import numpy as np
-import shap
+import os
+import pandas as pd
 
-from database.mongodb import loan_applications_collection, loan_predictions_collection
-from services.bank_statement_analyzer import BankStatementAnalyzer
-from services.credit_score_engine import CreditScoreEngine
-from services.loan_recommendation import LoanRecommendation
-from services.emi_calculator import EMICalculator
-from services.ai_explanation import AIExplanation
+try:
+    from database.mongodb import loan_applications_collection, loan_predictions_collection
+    from services.bank_statement_analyzer import BankStatementAnalyzer
+    from services.credit_score_engine import CreditScoreEngine
+    from services.loan_recommendation import LoanRecommendation
+    from services.emi_calculator import EMICalculator
+    from services.ai_explanation import AIExplanation
+except ModuleNotFoundError:
+    from ..database.mongodb import loan_applications_collection, loan_predictions_collection
+    from ..services.bank_statement_analyzer import BankStatementAnalyzer
+    from ..services.credit_score_engine import CreditScoreEngine
+    from ..services.loan_recommendation import LoanRecommendation
+    from ..services.emi_calculator import EMICalculator
+    from ..services.ai_explanation import AIExplanation
 
 
 router = APIRouter()
 
-# Load ML model and scaler
-with open('backend/ml/loan_model.pkl', 'rb') as f:
-    model = pickle.load(f)
+try:
+    import shap
+except Exception:
+    shap = None
 
-with open('backend/ml/scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
+# Determine the path to ML artifacts
+ML_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ml')
+
+def _load_model_artifacts():
+    model_path = os.path.join(ML_DIR, "loan_model.pkl")
+    scaler_path = os.path.join(ML_DIR, "scaler.pkl")
+    config_path = os.path.join(ML_DIR, "model_config.pkl")
+
+    if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+        raise HTTPException(
+            status_code=503,
+            detail="ML artifacts not found. Run backend/ml/train_model.py first."
+        )
+
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+
+    with open(scaler_path, "rb") as f:
+        scaler = pickle.load(f)
+
+    model_config = {"feature_names": None, "optimal_threshold": 0.5}
+    if os.path.exists(config_path):
+        with open(config_path, "rb") as f:
+            loaded = pickle.load(f)
+            if isinstance(loaded, dict):
+                model_config.update(loaded)
+
+    return model, scaler, model_config
+
+
+def _extract_shap_values(shap_values: np.ndarray, n_features: int) -> np.ndarray:
+    arr = np.asarray(shap_values)
+    if arr.ndim == 3:
+        # Common RandomForest shape in newer SHAP versions: (samples, features, classes)
+        return arr[0, :, 1]
+    if arr.ndim == 2:
+        return arr[0]
+    if arr.ndim == 1 and arr.shape[0] == n_features:
+        return arr
+    raise ValueError(f"Unexpected SHAP shape: {arr.shape}")
 
 class LoanApplication(BaseModel):
     email: str
@@ -43,8 +91,10 @@ class EMIRequest(BaseModel):
 @router.post("/apply-loan")
 async def apply_loan(application: LoanApplication):
     """Submit loan application"""
+    canonical_email = application.email.strip().lower()
     app_doc = {
         **application.dict(),
+        "email": canonical_email,
         "status": "pending",
         "created_at": datetime.utcnow()
     }
@@ -58,6 +108,9 @@ async def apply_loan(application: LoanApplication):
 
 @router.post("/predict-loan")
 async def predict_loan(application: LoanApplication):
+    canonical_email = application.email.strip().lower()
+    model, scaler, model_config = _load_model_artifacts()
+    optimal_threshold = float(model_config.get("optimal_threshold", 0.5))
 
     # Analyze financial data
     analyzer = BankStatementAnalyzer()
@@ -76,8 +129,7 @@ async def predict_loan(application: LoanApplication):
     credit_score = credit_engine.calculate_credit_score(financial_data)
     credit_rating = credit_engine.get_credit_rating(credit_score)
 
-    # Feature names
-    feature_names = [
+    default_feature_names = [
         "monthly_income",
         "monthly_expenses",
         "savings_ratio",
@@ -88,6 +140,7 @@ async def predict_loan(application: LoanApplication):
         "account_balance",
         "transaction_frequency"
     ]
+    feature_names = model_config.get("feature_names") or default_feature_names
 
     # Prepare feature values
     feature_values = [[
@@ -102,31 +155,34 @@ async def predict_loan(application: LoanApplication):
         financial_data["transaction_frequency"]
     ]]
 
-    # Convert to DataFrame (fix scaler warning)
-    import pandas as pd
-
-    features_df = pd.DataFrame(feature_values, columns=feature_names)
+    features_df = pd.DataFrame(feature_values, columns=default_feature_names)
+    features_df = features_df.reindex(columns=feature_names)
 
     print("Features before scaling:", features_df)
 
     # Scale features
     features_scaled = scaler.transform(features_df)
 
-    # Prediction
-    prediction = model.predict(features_scaled)[0]
+    # Prediction using optimal threshold
     prediction_proba = model.predict_proba(features_scaled)[0]
+    probability_approved = prediction_proba[1]
+    
+    # Use optimal threshold for decision (instead of default 0.5)
+    prediction = 1 if probability_approved >= optimal_threshold else 0
 
     # SHAP explanation
     try:
 
+        if shap is None:
+            raise RuntimeError("SHAP is not installed")
+
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(features_scaled)
 
-        # Handle SHAP output shape safely
         if isinstance(shap_values, list):
-            shap_array = shap_values[1][0]   # positive class
+            shap_array = np.asarray(shap_values[1])[0]
         else:
-            shap_array = shap_values[0]
+            shap_array = _extract_shap_values(shap_values, len(feature_names))
 
         feature_importance = {
             feature_names[i]: float(shap_array[i])
@@ -169,7 +225,7 @@ async def predict_loan(application: LoanApplication):
 
     # Save prediction
     prediction_doc = {
-        "email": application.email,
+        "email": canonical_email,
         "prediction": int(prediction),
         "probability": float(prediction_proba[1]),
         "credit_score": credit_score,

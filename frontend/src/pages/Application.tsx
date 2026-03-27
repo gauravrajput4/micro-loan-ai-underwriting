@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Application() {
 
@@ -10,10 +11,11 @@ export default function Application() {
     const location = useLocation();
 
     const bankData = location.state?.bankData;
+    const { user } = useAuth();
 
     const [formData, setFormData] = useState({
-        full_name: '',
-        email: '',
+        full_name: user?.full_name || '',
+        email: user?.email || '',
         loan_amount: 5000,
         loan_purpose: 'Education',
         employment_status: 'student',
@@ -33,6 +35,15 @@ export default function Application() {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    useEffect(() => {
+        if (!user) return;
+        setFormData((prev) => ({
+            ...prev,
+            email: user.email || prev.email,
+            full_name: user.full_name || prev.full_name,
+        }));
+    }, [user]);
+
     const handleSubmit = async (e: React.FormEvent) => {
 
         e.preventDefault();
@@ -41,8 +52,8 @@ export default function Application() {
         try {
 
             const payload = {
-                email: formData.email,
-                full_name: formData.full_name,
+                email: (user?.email || formData.email || '').trim().toLowerCase(),
+                full_name: user?.full_name || formData.full_name,
                 loan_amount: formData.loan_amount,
                 loan_purpose: formData.loan_purpose,
                 employment_status: formData.employment_status,
@@ -85,7 +96,7 @@ export default function Application() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="max-w-3xl mx-auto space-y-8"
+            className="max-w-3xl mx-auto space-y-6 sm:space-y-8"
         >
 
             <div>
@@ -100,7 +111,7 @@ export default function Application() {
 
             <form
                 onSubmit={handleSubmit}
-                className="bg-white p-8 rounded-3xl shadow-sm border border-neutral-100 space-y-6"
+                className="bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-neutral-100 space-y-6"
             >
 
                 {/* Personal Details */}
@@ -140,13 +151,14 @@ export default function Application() {
                             <input
                                 type="email"
                                 required
-                                value={formData.email}
+                                value={user?.email || formData.email}
                                 onChange={e =>
                                     setFormData({
                                         ...formData,
                                         email: e.target.value
                                     })
                                 }
+                                readOnly={!!user?.email}
                                 className="w-full px-4 py-3 rounded-xl border border-neutral-200"
                             />
                         </div>
@@ -187,7 +199,7 @@ export default function Application() {
                         Loan Request
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                         <div>
                             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
@@ -253,7 +265,7 @@ export default function Application() {
 
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                         <Metric title="Monthly Income" value={formData.monthly_income}/>
                         <Metric title="Monthly Expenses" value={formData.monthly_expenses}/>

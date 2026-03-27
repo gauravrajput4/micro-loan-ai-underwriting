@@ -222,6 +222,8 @@ class BankStatementAnalyzer:
             (monthly_income - monthly_expenses) / monthly_income
             if monthly_income > 0 else 0
         )
+        # Ensure savings_ratio is non-negative
+        savings_ratio = max(0, savings_ratio)
 
         cash_flow_stability = 0.7 if savings > monthly_expenses else 0.4
 
@@ -231,12 +233,16 @@ class BankStatementAnalyzer:
             account_balance
         )
 
+        # Estimate transaction frequency based on income and expenses
+        # Higher income/expenses typically means more transactions
+        estimated_transactions = min(100, max(20, int(monthly_expenses / 1000) + 30))
+
         return {
             "avg_monthly_balance": float(account_balance),
             "avg_monthly_income": float(monthly_income),
             "avg_monthly_expenses": float(monthly_expenses),
             "savings_ratio": float(savings_ratio),
-            "transaction_frequency": 30,
+            "transaction_frequency": estimated_transactions,
             "cash_flow_stability": float(cash_flow_stability),
             "financial_stability_score": float(financial_stability_score),
             "existing_loans": float(existing_loans),

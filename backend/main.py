@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth_routes, loan_routes, upload_routes, dashboard_routes
 import uvicorn
+
+try:
+    from routes import auth_routes, loan_routes, upload_routes, dashboard_routes
+except ModuleNotFoundError:
+    from .routes import auth_routes, loan_routes, upload_routes, dashboard_routes
 
 app = FastAPI(title="AI Loan Underwriting System", version="1.0.0")
 
@@ -33,4 +37,4 @@ async def health_check():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

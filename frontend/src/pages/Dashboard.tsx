@@ -9,7 +9,8 @@ import {
     Calendar,
     Activity,
     CreditCard,
-    IndianRupee
+    IndianRupee,
+    CheckCircle2
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +21,23 @@ export default function Dashboard() {
     const { user } = useAuth();
 
     const [metrics, setMetrics] = useState<any>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    const normalizeStatus = (value?: string) => {
+        const status = (value || '').toLowerCase();
+        if (status.includes('approve')) return 'Approved';
+        if (status.includes('reject')) return 'Rejected';
+        if (status.includes('pending')) return 'Pending';
+        return 'No Application';
+    };
+
+    const getStatusBadgeClasses = (status: string) => {
+        if (status === 'Approved') return 'bg-emerald-100 text-emerald-700';
+        if (status === 'Rejected') return 'bg-rose-100 text-rose-700';
+        if (status === 'Pending') return 'bg-amber-100 text-amber-700';
+        return 'bg-neutral-100 text-neutral-600';
+    };
 
     if (user?.user_type === 'admin') {
         return <Navigate to="/admin" replace />;
@@ -31,14 +49,30 @@ export default function Dashboard() {
 
         dashboardAPI
             .getUserDashboard(user.email)
-            .then(res => setMetrics(res))
-            .catch(console.error);
+            .then(res => {
+                setMetrics(res);
+                setLoadError(null);
+            })
+            .catch((err) => {
+                console.error(err);
+                setLoadError('Unable to load dashboard data. Please refresh.');
+            })
+            .finally(() => setIsLoading(false));
 
     }, [user]);
 
 
 
     const repaymentData = metrics?.repaymentSchedule || [];
+    const latestStatus = normalizeStatus(metrics?.recentStatus);
+
+    if (isLoading) {
+        return <div className="text-sm text-neutral-500">Loading dashboard...</div>;
+    }
+
+    if (loadError) {
+        return <div className="text-sm text-rose-600">{loadError}</div>;
+    }
 
 
 
@@ -125,18 +159,34 @@ export default function Dashboard() {
                     subtitle="Generated Score"
                     color="bg-purple-50 text-purple-600"
                 />
-
-
-
                 <StatCard
                     title="Application Status"
-                    value={metrics?.recentStatus || "No Application"}
+                    value={latestStatus}
                     icon={CreditCard}
                     subtitle="Latest Decision"
-                    color="bg-neutral-100 text-neutral-600"
+                    color={
+                        latestStatus === 'Approved'
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : latestStatus === 'Rejected'
+                                ? 'bg-rose-50 text-rose-600'
+                                : latestStatus === 'Pending'
+                                    ? 'bg-amber-50 text-amber-600'
+                                    : 'bg-neutral-100 text-neutral-600'
+                    }
                 />
-
             </div>
+
+            {latestStatus === 'Approved' && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3">
+                    <CheckCircle2 size={20} className="text-emerald-600" />
+                    <div>
+                        <p className="font-semibold text-emerald-800">Loan Approved</p>
+                        <p className="text-sm text-emerald-700">
+                            Your latest loan request has been approved.
+                        </p>
+                    </div>
+                </div>
+            )}
 
 
 
@@ -229,6 +279,10 @@ export default function Dashboard() {
                                         <p className="font-medium text-sm text-neutral-900">
                                             ₹{app.loan_amount}
                                         </p>
+
+                                        <span className={`inline-flex mt-1 px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeClasses(normalizeStatus(app.status === 'pending' && i === 0 ? metrics?.recentStatus : app.status))}`}>
+                                            {normalizeStatus(app.status === 'pending' && i === 0 ? metrics?.recentStatus : app.status)}
+                                        </span>
 
                                     </div>
 

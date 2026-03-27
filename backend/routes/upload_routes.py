@@ -1,7 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
-from services.bank_statement_analyzer import BankStatementAnalyzer
-from database.mongodb import bank_statements_collection
 from datetime import datetime
+
+try:
+    from services.bank_statement_analyzer import BankStatementAnalyzer
+    from database.mongodb import bank_statements_collection
+except ModuleNotFoundError:
+    from ..services.bank_statement_analyzer import BankStatementAnalyzer
+    from ..database.mongodb import bank_statements_collection
 
 router = APIRouter()
 

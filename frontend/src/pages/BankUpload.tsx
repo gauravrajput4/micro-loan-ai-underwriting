@@ -83,7 +83,7 @@ export default function BankUpload() {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-3xl mx-auto space-y-8"
+            className="max-w-3xl mx-auto space-y-6 sm:space-y-8"
         >
 
             <div>
@@ -98,7 +98,7 @@ export default function BankUpload() {
 
             </div>
 
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-neutral-100">
+            <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-neutral-100">
 
                 {/* Upload UI */}
 
@@ -106,7 +106,7 @@ export default function BankUpload() {
 
                     <div className="space-y-6">
 
-                        <div className="border-2 border-dashed border-neutral-200 rounded-2xl p-12 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative">
+                        <div className="border-2 border-dashed border-neutral-200 rounded-2xl p-6 sm:p-12 text-center hover:bg-neutral-50 transition-colors cursor-pointer relative">
 
                             <input
                                 type="file"
@@ -171,7 +171,7 @@ export default function BankUpload() {
 
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                             <Metric
                                 title="Avg Monthly Income"

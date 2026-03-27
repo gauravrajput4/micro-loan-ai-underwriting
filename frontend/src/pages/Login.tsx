@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, ArrowRight, User, Briefcase, Shield } from 'lucide-react';
+import { GraduationCap, ArrowRight, User, Shield, Moon, Sun } from 'lucide-react';
 import { authAPI, LoginData, RegisterData } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
   const [userType, setUserType] = useState<'student' | 'unemployed' | 'admin'>('student');
   const [loading, setLoading] = useState(false);
@@ -56,11 +58,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-5xl grid md:grid-cols-2 bg-white rounded-3xl shadow-xl overflow-hidden">
-        
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4 sm:p-6 font-sans relative">
+      <button
+        onClick={toggleTheme}
+        className="absolute right-4 top-4 sm:right-6 sm:top-6 p-2.5 rounded-lg border border-neutral-200 bg-white/80 backdrop-blur hover:bg-neutral-100"
+        aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 bg-white rounded-3xl shadow-xl overflow-hidden">
+
         {/* Left Side - Branding */}
-        <div className="bg-neutral-900 p-12 flex flex-col justify-between relative overflow-hidden text-white">
+        <div className="bg-neutral-900 p-8 sm:p-10 lg:p-12 flex flex-col justify-between relative overflow-hidden text-white min-h-[260px]">
           <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3"></div>
           
@@ -76,7 +86,7 @@ export default function Login() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="text-4xl md:text-5xl font-medium leading-tight mb-6"
+              className="text-3xl sm:text-4xl lg:text-5xl font-medium leading-tight mb-6"
             >
               Fair financing<br/>for your<br/>education.
             </motion.h1>
@@ -93,7 +103,7 @@ export default function Login() {
         </div>
 
         {/* Right Side - Form */}
-        <div className="p-12 flex flex-col justify-center">
+        <div className="p-6 sm:p-8 lg:p-12 flex flex-col justify-center">
           <div className="max-w-md w-full mx-auto">
             <h2 className="text-2xl font-semibold mb-2">
               {isSignUp ? 'Create your account' : 'Welcome back'}

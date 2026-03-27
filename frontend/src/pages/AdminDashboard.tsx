@@ -38,6 +38,24 @@ export default function AdminDashboard() {
     const [monthlyTrends,setMonthlyTrends] = useState<any[]>([]);
     const [statusDistribution,setStatusDistribution] = useState<any>({});
 
+    const normalizeStatus = (app: any) => {
+        if (typeof app?.prediction === 'number') {
+            return app.prediction === 1 ? 'Approved' : 'Rejected';
+        }
+
+        const raw = String(app?.status || app?.decision || '').toLowerCase();
+        if (raw.includes('approve')) return 'Approved';
+        if (raw.includes('reject')) return 'Rejected';
+        if (raw.includes('pending')) return 'Pending';
+        return 'Pending';
+    };
+
+    const statusBadgeClass = (status: string) => {
+        if (status === 'Approved') return 'bg-green-100 text-green-800';
+        if (status === 'Rejected') return 'bg-red-100 text-red-800';
+        return 'bg-amber-100 text-amber-800';
+    };
+
     useEffect(()=>{
 
         dashboardAPI.getAdminDashboard().then(data=>{
@@ -328,11 +346,12 @@ export default function AdminDashboard() {
 
                         {recentApplications.map((app:any)=>{
 
-                            const status = app.prediction === 1 ? "approved":"rejected";
+                            const status = normalizeStatus(app);
+                            const probability = Number(app?.probability || 0);
 
                             return(
 
-                                <tr key={app._id}>
+                                <tr key={app._id} className={status === 'Approved' ? 'bg-green-50/40' : ''}>
 
                                     <td className="px-6 py-4 flex items-center gap-3">
 
@@ -347,16 +366,12 @@ export default function AdminDashboard() {
                                     </td>
 
                                     <td className="px-6 py-4">
-                                        {(app.probability*100).toFixed(1)}%
+                                        {(probability * 100).toFixed(1)}%
                                     </td>
 
                                     <td className="px-6 py-4">
 
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                            status==="approved"
-                                                ?"bg-green-100 text-green-800"
-                                                :"bg-red-100 text-red-800"
-                                        }`}>
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(status)}`}>
 
                                         {status}
 

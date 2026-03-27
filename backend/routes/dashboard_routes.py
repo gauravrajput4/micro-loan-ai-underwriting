@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+import re
 from database.mongodb import (
     loan_applications_collection,
     loan_predictions_collection,
@@ -7,6 +8,16 @@ from database.mongodb import (
 from datetime import datetime, timedelta
 
 router = APIRouter()
+
+
+def _canonical_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _email_query(email: str) -> dict:
+    # Match exact email while tolerating old records with different casing/spacing.
+    escaped = re.escape(_canonical_email(email))
+    return {"email": {"$regex": rf"^\s*{escaped}\s*$", "$options": "i"}}
 
 @router.get("/admin-dashboard")
 async def get_admin_dashboard():
@@ -104,22 +115,36 @@ async def get_all_applications():
 
 @router.get("/metrics")
 async def get_user_dashboard_metrics(email: str):
+    canonical_email = _canonical_email(email)
+    email_query = _email_query(canonical_email)
 
     # Latest prediction
     prediction = loan_predictions_collection.find_one(
-        {"email": email},
+        email_query,
         sort=[("created_at", -1)]
     )
 
     # Applications
     applications = list(
-        loan_applications_collection.find({"email": email})
+        loan_applications_collection.find(email_query)
         .sort("created_at", -1)
         .limit(5)
     )
 
+    latest_prediction_status = None
+    if prediction:
+        latest_prediction_status = "approved" if prediction.get("prediction") == 1 else "rejected"
+
     for app in applications:
         app["_id"] = str(app["_id"])
+        app_email = _canonical_email(app.get("email", canonical_email))
+        app["email"] = app_email
+        raw_status = str(app.get("status", "pending")).lower()
+        app["status"] = raw_status
+
+    # If the latest application is still marked pending, surface the latest model decision.
+    if applications and latest_prediction_status and applications[0].get("status") == "pending":
+        applications[0]["status"] = latest_prediction_status
 
     total_borrowed = 0
     next_payment = 0
@@ -159,6 +184,20 @@ async def get_user_dashboard_metrics(email: str):
                     "month": m,
                     "balance": round(balance,2)
                 })
+
+    elif applications:
+        status = str(applications[0].get("status", "pending")).title()
+
+    # Ensure decision state is visible for users who only have predictions.
+    if not applications and prediction:
+        applications = [{
+            "_id": "prediction-latest",
+            "email": canonical_email,
+            "loan_purpose": "Latest Prediction",
+            "loan_amount": prediction.get("requested_amount", 0),
+            "status": "approved" if prediction.get("prediction") == 1 else "rejected",
+            "created_at": prediction.get("created_at", datetime.utcnow())
+        }]
 
     return {
         "totalBorrowed": total_borrowed,

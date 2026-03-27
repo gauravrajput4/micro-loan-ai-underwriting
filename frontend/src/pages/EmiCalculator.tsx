@@ -48,7 +48,7 @@ export default function EmiCalculator() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="max-w-4xl mx-auto space-y-8"
+            className="max-w-4xl mx-auto space-y-6 sm:space-y-8"
         >
 
             <div>
@@ -60,10 +60,10 @@ export default function EmiCalculator() {
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
 
                 {/* INPUT SECTION */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-neutral-100 space-y-6">
+                <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-neutral-100 space-y-6">
 
                     {/* Loan Amount */}
                     <div>
@@ -183,7 +183,7 @@ export default function EmiCalculator() {
                 </div>
 
                 {/* RESULT SECTION */}
-                <div className="bg-neutral-900 p-8 rounded-3xl shadow-sm text-white flex flex-col justify-center relative overflow-hidden">
+                <div className="bg-neutral-900 p-5 sm:p-8 rounded-3xl shadow-sm text-white flex flex-col justify-center relative overflow-hidden">
 
                     <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
 
@@ -194,12 +194,12 @@ export default function EmiCalculator() {
                                 Monthly EMI
                             </p>
 
-                            <p className="text-5xl font-mono font-semibold text-emerald-400">
+                            <p className="text-3xl sm:text-5xl font-mono font-semibold text-emerald-400 break-all">
                                 ₹{result?.monthlyEMI?.toLocaleString() || "0.00"}
                             </p>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-white/10">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-white/10">
 
                             <div>
                                 <p className="text-neutral-400 text-sm font-medium mb-1">

@@ -72,7 +72,9 @@ export const loanAPI = {
 export const dashboardAPI = {
 
     getUserDashboard: async (email: string) => {
-        const response = await api.get(`/dashboard/metrics?email=${email}`);
+        const response = await api.get('/dashboard/metrics', {
+            params: { email: (email || '').trim().toLowerCase() },
+        });
         return response.data;
     },
 
