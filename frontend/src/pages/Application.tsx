@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, Sparkles } from 'lucide-react';
-import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../services/api';
 
 export default function Application() {
 
@@ -65,18 +65,14 @@ export default function Application() {
             };
 
             // Step 1 Save Application
-            await axios.post(
-                "http://localhost:8000/api/loan/apply-loan",
-                payload
-            );
+            const applyRes = await api.post('/loan/apply-loan', payload);
 
             // Step 2 Predict Loan
-            const res = await axios.post(
-                "http://localhost:8000/api/loan/predict-loan",
-                payload
-            );
+            const res = await api.post('/loan/predict-loan', payload);
 
-            navigate('/results', { state: { result: res.data } });
+            navigate('/results', {
+                state: { result: res.data, applicationId: applyRes.data?.application_id },
+            });
 
         } catch (error) {
 

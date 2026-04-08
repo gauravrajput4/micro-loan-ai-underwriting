@@ -6,9 +6,12 @@ import {
   FileText,
   Upload,
   Calculator,
+  ShieldCheck,
+  ListChecks,
   LogOut,
   GraduationCap,
   Shield,
+  Fingerprint,
   Menu,
   X,
   Moon,
@@ -17,23 +20,39 @@ import {
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { authAPI } from '../services/api';
 
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, refreshToken, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const getNavItems = () => {
+    const role = (user?.user_type || '').toLowerCase();
+
     const baseItems = [
       { path: '/dashboard', label: 'My Dashboard', icon: LayoutDashboard },
       { path: '/calculator', label: 'EMI Calculator', icon: Calculator },
+      { path: '/security', label: 'Security', icon: ShieldCheck },
     ];
 
-    if (user?.user_type === 'admin') {
-      return [
+    if (['admin', 'underwriter', 'risk_manager', 'auditor'].includes(role)) {
+      const staff = [
         { path: '/admin', label: 'Admin Dashboard', icon: Shield },
+      ];
+
+      if (['admin', 'underwriter', 'risk_manager'].includes(role)) {
+        staff.push({ path: '/cases', label: 'Loan Queue', icon: ListChecks });
+      }
+
+      if (['admin', 'risk_manager', 'auditor'].includes(role)) {
+        staff.push({ path: '/audit', label: 'Audit Logs', icon: ShieldCheck });
+      }
+
+      return [
+        ...staff,
         ...baseItems,
       ];
     }
@@ -42,12 +61,21 @@ export default function Layout() {
       ...baseItems,
       { path: '/apply', label: 'Apply for Loan', icon: FileText },
       { path: '/upload', label: 'Bank Statement', icon: Upload },
+      { path: '/kyc', label: 'KYC Verification', icon: Fingerprint },
     ];
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      if (refreshToken) {
+        await authAPI.logout(refreshToken);
+      }
+    } catch {
+      // Best-effort server logout; always clear local session.
+    } finally {
+      logout();
+      navigate('/login');
+    }
   };
 
   const navItems = getNavItems();

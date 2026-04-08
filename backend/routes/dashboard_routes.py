@@ -1,13 +1,34 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 import re
-from database.mongodb import (
-    loan_applications_collection,
-    loan_predictions_collection,
-    users_collection
-)
 from datetime import datetime, timedelta
 
+try:
+    from database.mongodb import (
+        loan_applications_collection,
+        loan_predictions_collection,
+        users_collection,
+    )
+    from services.security import AuthUser, require_roles
+except ModuleNotFoundError:
+    from ..database.mongodb import (
+        loan_applications_collection,
+        loan_predictions_collection,
+        users_collection,
+    )
+    from ..services.security import AuthUser, require_roles
+
 router = APIRouter()
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    # bson.ObjectId is not JSON serializable by FastAPI's encoder.
+    if value.__class__.__name__ == "ObjectId":
+        return str(value)
+    return value
 
 
 def _canonical_email(email: str) -> str:
@@ -20,7 +41,8 @@ def _email_query(email: str) -> dict:
     return {"email": {"$regex": rf"^\s*{escaped}\s*$", "$options": "i"}}
 
 @router.get("/admin-dashboard")
-async def get_admin_dashboard():
+async def get_admin_dashboard(current_user: AuthUser = Depends(require_roles("admin", "auditor", "risk_manager", "underwriter"))):
+    _ = current_user
 
     total_applications = loan_applications_collection.count_documents({})
     total_predictions = loan_predictions_collection.count_documents({})
@@ -48,8 +70,7 @@ async def get_admin_dashboard():
         .limit(10)
     )
 
-    for app in recent_applications:
-        app["_id"] = str(app["_id"])
+    recent_applications = _json_safe(recent_applications)
 
     status_distribution = {
         "approved": approved_loans,
@@ -82,7 +103,7 @@ async def get_admin_dashboard():
         {"$sort": {"_id.year": 1, "_id.month": 1}}
     ]
 
-    monthly_trends = list(loan_predictions_collection.aggregate(monthly_pipeline))
+    monthly_trends = _json_safe(list(loan_predictions_collection.aggregate(monthly_pipeline)))
 
     return {
         "summary": {
@@ -100,21 +121,24 @@ async def get_admin_dashboard():
     }
 
 @router.get("/loan-applications")
-async def get_all_applications():
+async def get_all_applications(current_user: AuthUser = Depends(require_roles("admin", "underwriter", "risk_manager", "auditor"))):
     """Get all loan applications"""
+    _ = current_user
     applications = list(
         loan_applications_collection.find()
         .sort("created_at", -1)
         .limit(100)
     )
     
-    for app in applications:
-        app["_id"] = str(app["_id"])
+    applications = _json_safe(applications)
     
     return {"applications": applications}
 
 @router.get("/metrics")
-async def get_user_dashboard_metrics(email: str):
+async def get_user_dashboard_metrics(email: str, current_user: AuthUser = Depends(require_roles("applicant", "student", "unemployed", "admin", "underwriter", "risk_manager", "auditor"))):
+    role = str(current_user.get("role", "")).lower()
+    if role in {"applicant", "student", "unemployed"} and _canonical_email(email) != _canonical_email(current_user.get("email", "")):
+        raise HTTPException(status_code=403, detail="Applicants can only view their own metrics")
     canonical_email = _canonical_email(email)
     email_query = _email_query(canonical_email)
 
@@ -198,6 +222,8 @@ async def get_user_dashboard_metrics(email: str):
             "status": "approved" if prediction.get("prediction") == 1 else "rejected",
             "created_at": prediction.get("created_at", datetime.utcnow())
         }]
+
+    applications = _json_safe(applications)
 
     return {
         "totalBorrowed": total_borrowed,

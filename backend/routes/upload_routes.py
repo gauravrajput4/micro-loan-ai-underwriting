@@ -1,19 +1,25 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
 from datetime import datetime
 
 try:
     from services.bank_statement_analyzer import BankStatementAnalyzer
     from database.mongodb import bank_statements_collection
+    from services.security import AuthUser, require_roles
 except ModuleNotFoundError:
     from ..services.bank_statement_analyzer import BankStatementAnalyzer
     from ..database.mongodb import bank_statements_collection
+    from ..services.security import AuthUser, require_roles
 
 router = APIRouter()
 
 @router.post("/upload-bank-statement")
 async def upload_bank_statement(email: str = Form(...),
-    file: UploadFile = File(...)):
+    file: UploadFile = File(...),
+    current_user: AuthUser = Depends(require_roles("applicant", "student", "unemployed", "underwriter", "risk_manager", "admin"))):
     """Upload and analyze bank statement"""
+    role = str(current_user.get("role", "")).lower()
+    if role in {"applicant", "student", "unemployed"} and email.strip().lower() != current_user["email"]:
+        raise HTTPException(status_code=403, detail="Cannot upload statement for another user")
     
     # Validate file type
     allowed_extensions = ['.pdf', '.csv', '.xlsx', '.xls']

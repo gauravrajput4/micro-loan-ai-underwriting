@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -22,6 +22,21 @@ except ModuleNotFoundError:
     from ..services.emi_calculator import EMICalculator
     from ..services.ai_explanation import AIExplanation
 
+try:
+    from services.audit_log import log_audit_event
+    from services.security import AuthUser, require_roles
+    from services.policy_engine import evaluate_policy
+    from services.shadow_evaluator import evaluate_challenger_shadow
+    from services.email_service import send_email
+    from services.email_templates import build_loan_decision_email
+except ModuleNotFoundError:
+    from ..services.audit_log import log_audit_event
+    from ..services.security import AuthUser, require_roles
+    from ..services.policy_engine import evaluate_policy
+    from ..services.shadow_evaluator import evaluate_challenger_shadow
+    from ..services.email_service import send_email
+    from ..services.email_templates import build_loan_decision_email
+
 
 router = APIRouter()
 
@@ -32,6 +47,17 @@ except Exception:
 
 # Determine the path to ML artifacts
 ML_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ml')
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    # bson.ObjectId is not JSON serializable by FastAPI's encoder.
+    if value.__class__.__name__ == "ObjectId":
+        return str(value)
+    return value
 
 def _load_model_artifacts():
     model_path = os.path.join(ML_DIR, "loan_model.pkl")
@@ -83,23 +109,66 @@ class LoanApplication(BaseModel):
     existing_loans: Optional[float] = None
     account_balance: Optional[float] = None
 
+
 class EMIRequest(BaseModel):
     principal: float
     annual_rate: float
     tenure_months: int
 
+
+def _send_loan_decision_email(
+    *,
+    to_email: str,
+    applicant_name: str,
+    decision: str,
+    requested_amount: float,
+    reasons: list[str],
+    recommendations: list[str],
+) -> None:
+    payload = build_loan_decision_email(
+        decision=decision,
+        applicant_name=applicant_name,
+        requested_amount=requested_amount,
+        reasons=reasons,
+        recommendations=recommendations,
+    )
+    send_email(
+        to_email,
+        payload["subject"],
+        payload["text"],
+        html_body=payload["html"],
+    )
+
 @router.post("/apply-loan")
-async def apply_loan(application: LoanApplication):
+async def apply_loan(
+    application: LoanApplication,
+    current_user: AuthUser = Depends(require_roles("applicant", "student", "unemployed", "admin")),
+):
     """Submit loan application"""
-    canonical_email = application.email.strip().lower()
+    canonical_email = current_user["email"]
     app_doc = {
         **application.dict(),
         "email": canonical_email,
-        "status": "pending",
+        "status": "submitted",
+        "lifecycle": [
+            {
+                "status": "submitted",
+                "at": datetime.utcnow(),
+                "source": "applicant",
+            }
+        ],
         "created_at": datetime.utcnow()
     }
     
     result = loan_applications_collection.insert_one(app_doc)
+    log_audit_event(
+        action="loan.application.submitted",
+        actor_email=current_user["email"],
+        actor_role=current_user["role"],
+        entity_type="loan",
+        entity_id=str(result.inserted_id),
+        metadata={"loan_amount": application.loan_amount, "purpose": application.loan_purpose},
+    )
     print(result)
     return {
         "message": "Loan application submitted successfully",
@@ -107,8 +176,11 @@ async def apply_loan(application: LoanApplication):
     }
 
 @router.post("/predict-loan")
-async def predict_loan(application: LoanApplication):
-    canonical_email = application.email.strip().lower()
+async def predict_loan(
+    application: LoanApplication,
+    current_user: AuthUser = Depends(require_roles("applicant", "student", "unemployed", "underwriter", "risk_manager", "admin")),
+):
+    canonical_email = current_user["email"]
     model, scaler, model_config = _load_model_artifacts()
     optimal_threshold = float(model_config.get("optimal_threshold", 0.5))
 
@@ -142,21 +214,26 @@ async def predict_loan(application: LoanApplication):
     ]
     feature_names = model_config.get("feature_names") or default_feature_names
 
-    # Prepare feature values
-    feature_values = [[
-        financial_data["avg_monthly_income"],
-        financial_data["avg_monthly_expenses"],
-        financial_data["savings_ratio"],
-        financial_data["financial_stability_score"],
-        financial_data["cash_flow_stability"],
-        credit_score,
-        financial_data.get("existing_loans", 0),
-        financial_data["avg_monthly_balance"],
-        financial_data["transaction_frequency"]
-    ]]
+    monthly_income = float(financial_data.get("avg_monthly_income", 0) or 0)
+    requested_amount = float(application.loan_amount or 0)
+    amount_to_income_ratio = (requested_amount / monthly_income) if monthly_income > 0 else 0.0
 
-    features_df = pd.DataFrame(feature_values, columns=default_feature_names)
-    features_df = features_df.reindex(columns=feature_names)
+    feature_map = {
+        "monthly_income": monthly_income,
+        "monthly_expenses": float(financial_data.get("avg_monthly_expenses", 0) or 0),
+        "savings_ratio": float(financial_data.get("savings_ratio", 0) or 0),
+        "financial_stability_score": float(financial_data.get("financial_stability_score", 0) or 0),
+        "cash_flow_stability": float(financial_data.get("cash_flow_stability", 0) or 0),
+        "credit_score": float(credit_score),
+        "existing_loans": float(financial_data.get("existing_loans", 0) or 0),
+        "account_balance": float(financial_data.get("avg_monthly_balance", 0) or 0),
+        "transaction_frequency": float(financial_data.get("transaction_frequency", 0) or 0),
+        "requested_amount": requested_amount,
+        "amount_to_income_ratio": float(amount_to_income_ratio),
+    }
+
+    features_df = pd.DataFrame([feature_map]).reindex(columns=feature_names, fill_value=0.0)
+    features_df = features_df.fillna(0.0)
 
     print("Features before scaling:", features_df)
 
@@ -223,6 +300,37 @@ async def predict_loan(application: LoanApplication):
         36
     )
 
+    # Affordability/policy guardrail on top of ML risk decision.
+    policy_result = evaluate_policy(
+        requested_amount=application.loan_amount,
+        monthly_income=float(financial_data.get("avg_monthly_income", 0) or 0),
+        loan_recommendation=loan_recommendation,
+        emi_data=emi_data,
+        financial_data=financial_data,
+    )
+    policy_pass = bool(policy_result["passed"])
+    policy_reasons = list(policy_result["human_reasons"])
+    policy_recommendations = list(policy_result["recommendations"])
+    policy_reason_codes = list(policy_result["reason_codes"])
+
+    if not policy_pass:
+        prediction = 0
+        explanation["decision"] = "rejected"
+        explanation["reasons"] = list(dict.fromkeys((explanation.get("reasons") or []) + policy_reasons))
+        explanation["recommendations"] = list(
+            dict.fromkeys((explanation.get("recommendations") or []) + policy_recommendations)
+        )
+        explanation["adverse_action_codes"] = policy_reason_codes
+
+    # Shadow challenger evaluation (no impact on production decision).
+    shadow_eval = evaluate_challenger_shadow(
+        email=canonical_email,
+        features_df=features_df,
+        champion_probability=float(prediction_proba[1]),
+        champion_decision=int(prediction),
+        request_id=None,
+    )
+
     # Save prediction
     prediction_doc = {
         "email": canonical_email,
@@ -234,13 +342,63 @@ async def predict_loan(application: LoanApplication):
         "explanation": explanation,
         "loan_recommendation": loan_recommendation,
         "emi_data": emi_data,
+        "policy_checks": {
+            "passed": policy_pass,
+            "reasons": policy_reasons,
+            "recommendations": policy_recommendations,
+            "reason_codes": policy_reason_codes,
+        },
+        "shadow_evaluation": shadow_eval,
         "requested_amount": application.loan_amount,
         "created_at": datetime.utcnow()
     }
 
     loan_predictions_collection.insert_one(prediction_doc)
 
+    loan_applications_collection.update_one(
+        {"email": canonical_email},
+        {
+            "$set": {
+                "status": "under_review",
+                "ai_decision": "approved" if prediction == 1 else "rejected",
+                "ai_probability": float(prediction_proba[1]),
+                "updated_at": datetime.utcnow(),
+            },
+            "$push": {
+                "lifecycle": {
+                    "status": "under_review",
+                    "at": datetime.utcnow(),
+                    "source": "model",
+                }
+            },
+        },
+    )
+
+    log_audit_event(
+        action="loan.model.scored",
+        actor_email=canonical_email,
+        actor_role="model",
+        entity_type="loan",
+        entity_id=canonical_email,
+        metadata={
+            "decision": "approved" if prediction == 1 else "rejected",
+            "probability": round(float(prediction_proba[1]), 4),
+            "credit_score": credit_score,
+        },
+    )
+
     print("Prediction saved:", prediction_doc)
+
+    _send_loan_decision_email(
+        to_email=canonical_email,
+        applicant_name=application.full_name,
+        decision="approved" if prediction == 1 else "rejected",
+        requested_amount=application.loan_amount,
+        reasons=explanation.get("reasons") or [],
+        recommendations=explanation.get("recommendations") or [],
+    )
+
+    safe_shadow_eval = _json_safe(shadow_eval)
 
     return {
         "decision": "approved" if prediction == 1 else "rejected",
@@ -250,13 +408,19 @@ async def predict_loan(application: LoanApplication):
         "financial_metrics": financial_data,
         "explanation": explanation,
         "loan_recommendation": loan_recommendation,
-        "emi_details": emi_data
+        "emi_details": emi_data,
+        "policy_checks": prediction_doc["policy_checks"],
+        "shadow_evaluation": safe_shadow_eval,
     }
 
 
 @router.post("/calculate-emi")
-async def calculate_emi(request: EMIRequest):
+async def calculate_emi(
+    request: EMIRequest,
+    current_user: AuthUser = Depends(require_roles("applicant", "student", "unemployed", "underwriter", "risk_manager", "admin", "auditor")),
+):
     """Calculate EMI for given loan parameters"""
+    _ = current_user
     calculator = EMICalculator()
     emi_data = calculator.calculate_emi(
         request.principal,

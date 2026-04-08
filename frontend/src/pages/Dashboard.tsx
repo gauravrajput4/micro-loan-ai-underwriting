@@ -39,7 +39,7 @@ export default function Dashboard() {
         return 'bg-neutral-100 text-neutral-600';
     };
 
-    if (user?.user_type === 'admin') {
+    if (['admin', 'underwriter', 'risk_manager', 'auditor'].includes((user?.user_type || '').toLowerCase())) {
         return <Navigate to="/admin" replace />;
     }
 

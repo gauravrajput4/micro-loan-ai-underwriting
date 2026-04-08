@@ -3,17 +3,19 @@ import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { UploadCloud, FileText, CheckCircle2 } from "lucide-react";
 import { uploadAPI } from "@/src/services/api";
+import { useAuth } from '../contexts/AuthContext';
 
 export default function BankUpload() {
 
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     const [file, setFile] = useState<File | null>(null);
     const [analysis, setAnalysis] = useState<any>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const userEmail = "gaurav@gmail.com"; // replace with logged-in user email
+    const userEmail = (user?.email || '').trim().toLowerCase();
 
     // File select
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,6 +36,11 @@ export default function BankUpload() {
 
         if (!file) {
             setError("Please select a file first");
+            return;
+        }
+
+        if (!userEmail) {
+            setError("Please login again to upload bank statement");
             return;
         }
 

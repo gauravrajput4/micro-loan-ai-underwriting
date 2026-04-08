@@ -11,9 +11,54 @@ export default function Login() {
   const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
-  const [userType, setUserType] = useState<'student' | 'unemployed' | 'admin'>('student');
+  const [userType, setUserType] = useState<'applicant' | 'student' | 'unemployed' | 'underwriter' | 'risk_manager' | 'admin' | 'auditor'>('applicant');
   const [loading, setLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
   const [error, setError] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupOtp, setSignupOtp] = useState('');
+  const [signupOtpSent, setSignupOtpSent] = useState(false);
+  const [signupOtpVerified, setSignupOtpVerified] = useState(false);
+
+  const handleSignupRequestOtp = async () => {
+    if (!signupEmail) {
+      setError('Enter email first to request OTP.');
+      return;
+    }
+
+    setOtpLoading(true);
+    setError('');
+    try {
+      await authAPI.signupRequestOtp(signupEmail);
+      setSignupOtpSent(true);
+      setSignupOtpVerified(false);
+      setError('OTP sent to your email. Please verify before signing up.');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to send signup OTP');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleSignupVerifyOtp = async () => {
+    if (!signupEmail || !signupOtp) {
+      setError('Enter email and OTP.');
+      return;
+    }
+
+    setOtpLoading(true);
+    setError('');
+    try {
+      await authAPI.signupVerifyOtp(signupEmail, signupOtp);
+      setSignupOtpVerified(true);
+      setError('Email verified. You can now create account.');
+    } catch (err: any) {
+      setSignupOtpVerified(false);
+      setError(err.response?.data?.detail || 'Invalid OTP');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -24,6 +69,12 @@ export default function Login() {
     
     try {
       if (isSignUp) {
+        if (!signupOtpVerified) {
+          setError('Please verify your email OTP before registration.');
+          setLoading(false);
+          return;
+        }
+
         const registerData: RegisterData = {
           email: formData.get('email') as string,
           password: formData.get('password') as string,
@@ -42,7 +93,7 @@ export default function Login() {
         };
         
         const response = await authAPI.login(loginData);
-        login(response.access_token, {
+        login(response.access_token, response.refresh_token, {
           email: response.email,
           full_name: response.full_name,
           user_type: response.user_type,
@@ -147,10 +198,14 @@ export default function Login() {
               {isSignUp && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
                   <label className="block text-sm font-medium text-neutral-700 mb-1.5">User Type</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {[
+                      { value: 'applicant', icon: User, label: 'Applicant' },
                       { value: 'student', icon: GraduationCap, label: 'Student' },
                       { value: 'unemployed', icon: User, label: 'Unemployed' },
+                      { value: 'underwriter', icon: Shield, label: 'Underwriter' },
+                      { value: 'risk_manager', icon: Shield, label: 'Risk' },
+                      { value: 'auditor', icon: Shield, label: 'Auditor' },
                       { value: 'admin', icon: Shield, label: 'Admin' }
                     ].map(({ value, icon: Icon, label }) => (
                       <button
@@ -177,11 +232,54 @@ export default function Login() {
                   name="email"
                   type="email" 
                   placeholder="user@example.com"
+                  value={signupEmail}
+                  onChange={(e) => {
+                    setSignupEmail(e.target.value);
+                    if (isSignUp) {
+                      setSignupOtpVerified(false);
+                    }
+                  }}
                   className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
               </div>
-              
+
+              {isSignUp && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter signup OTP"
+                      value={signupOtp}
+                      onChange={(e) => setSignupOtp(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSignupRequestOtp}
+                      disabled={otpLoading || !signupEmail}
+                      className="px-4 rounded-xl border border-neutral-200 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+                    >
+                      Send OTP
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={handleSignupVerifyOtp}
+                      disabled={otpLoading || !signupOtpSent || !signupOtp}
+                      className="px-4 py-2 rounded-lg bg-emerald-100 text-emerald-700 text-sm font-medium hover:bg-emerald-200 disabled:opacity-50"
+                    >
+                      Verify OTP
+                    </button>
+                    <span className={`text-xs font-medium ${signupOtpVerified ? 'text-emerald-600' : 'text-neutral-500'}`}>
+                      {signupOtpVerified ? 'Email verified' : 'Verification pending'}
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1.5">Password</label>
                 <input 
@@ -208,7 +306,13 @@ export default function Login() {
             <div className="mt-8 text-center text-sm text-neutral-500">
               {isSignUp ? 'Already have an account?' : 'Need an account?'}
               <button 
-                onClick={() => setIsSignUp(!isSignUp)}
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setSignupOtp('');
+                  setSignupOtpSent(false);
+                  setSignupOtpVerified(false);
+                  setError('');
+                }}
                 className="ml-2 text-emerald-600 font-medium hover:underline"
               >
                 {isSignUp ? 'Sign In' : 'Sign Up'}

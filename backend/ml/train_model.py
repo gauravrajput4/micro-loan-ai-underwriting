@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import math
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
@@ -95,6 +96,28 @@ def generate_training_data(n_samples=10000):
         )
     ])
     
+    annual_income = monthly_income * 12
+
+    # Approximate safe maximum amount using same recommendation-style signal.
+    credit_multiplier = np.select(
+        [credit_score >= 750, credit_score >= 700, credit_score >= 650, credit_score >= 600],
+        [1.2, 1.0, 0.8, 0.6],
+        default=0.4,
+    )
+    savings_multiplier = 1 + (savings_ratio * 0.5)
+    safe_max_amount = annual_income * 0.30 * credit_multiplier * savings_multiplier
+
+    # Requested amount includes realistic range + stress outliers.
+    request_factor = np.random.uniform(0.1, 2.8, n_samples)
+    requested_amount = np.clip(safe_max_amount * request_factor, 1000, 3_000_000)
+    amount_to_income_ratio = np.clip(requested_amount / np.maximum(annual_income, 1), 0, 10)
+
+    # EMI affordability for 12% annual, 36 months.
+    monthly_rate = (12.0 / 100) / 12
+    emi_factor = monthly_rate * math.pow(1 + monthly_rate, 36) / (math.pow(1 + monthly_rate, 36) - 1)
+    monthly_emi = requested_amount * emi_factor
+    emi_to_income_ratio = monthly_emi / np.maximum(monthly_income, 1)
+
     # Transaction frequency - realistic range
     transaction_frequency = np.random.randint(15, 100, n_samples)
     
@@ -109,23 +132,30 @@ def generate_training_data(n_samples=10000):
         'existing_loans': existing_loans,
         'account_balance': account_balance,
         'transaction_frequency': transaction_frequency,
+        'requested_amount': requested_amount,
+        'amount_to_income_ratio': amount_to_income_ratio,
     })
     
     # Generate target variable with balanced criteria
     # Using a scoring system instead of strict AND conditions
+    amount_pressure = np.clip(1 - (requested_amount / np.maximum(safe_max_amount, 1)), 0, 1)
+    emi_affordability = np.clip(1 - (emi_to_income_ratio / 0.5), 0, 1)
+
     approval_score = (
-        (df['savings_ratio'] * 25) +                          # 0-25 points
-        (df['financial_stability_score'] * 25) +              # 0-25 points
-        ((df['credit_score'] - 300) / 550 * 25) +            # 0-25 points
-        (np.clip(df['monthly_income'] / 100000, 0, 1) * 15) + # 0-15 points
-        (np.clip(1 - df['existing_loans'] / 200000, 0, 1) * 10)  # 0-10 points
+        (df['savings_ratio'] * 18) +                            # 0-18 points
+        (df['financial_stability_score'] * 18) +                # 0-18 points
+        ((df['credit_score'] - 300) / 550 * 18) +               # 0-18 points
+        (np.clip(df['monthly_income'] / 100000, 0, 1) * 12) +   # 0-12 points
+        (np.clip(1 - df['existing_loans'] / 200000, 0, 1) * 8) +# 0-8 points
+        (amount_pressure * 14) +                                # 0-14 points
+        (emi_affordability * 12)                                # 0-12 points
     )
     
     # Normalize to 0-100
     approval_score = (approval_score / 100) * 100
     
     # Threshold at 45 points (creates ~50% approval rate)
-    df['loan_approved'] = (approval_score >= 45).astype(int)
+    df['loan_approved'] = (approval_score >= 50).astype(int)
     
     # Add controlled noise (5%)
     noise_indices = np.random.choice(df.index, size=int(0.05 * n_samples), replace=False)
@@ -168,7 +198,8 @@ def train_model():
     feature_names = [
         'monthly_income', 'monthly_expenses', 'savings_ratio',
         'financial_stability_score', 'cash_flow_stability', 'credit_score',
-        'existing_loans', 'account_balance', 'transaction_frequency'
+        'existing_loans', 'account_balance', 'transaction_frequency',
+        'requested_amount', 'amount_to_income_ratio'
     ]
     X = df[feature_names]
     y = df['loan_approved']
@@ -274,6 +305,7 @@ def train_model():
     
     # Save configuration including optimal threshold
     config = {
+        'schema_version': 2,
         'optimal_threshold': optimal_threshold,
         'feature_names': feature_names,
         'class_distribution': {

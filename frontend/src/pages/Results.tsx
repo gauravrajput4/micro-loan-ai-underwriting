@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -18,6 +19,7 @@ import {
     ArrowLeft,
     Calculator,
 } from "lucide-react";
+import { loanAPI } from "../services/api";
 
 type RiskFeature = {
     feature: string;
@@ -43,6 +45,11 @@ type PredictionResult = {
     loan_recommendation?: Record<string, number>;
     emi_data?: Record<string, number>;
     emi_details?: Record<string, number>;
+    policy_checks?: {
+        passed?: boolean;
+        reasons?: string[];
+        recommendations?: string[];
+    };
 };
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -101,8 +108,51 @@ export default function Results() {
     const financialData = result.financial_data || result.financial_metrics || {};
     const loanRecommendation = result.loan_recommendation || {};
     const emiData = result.emi_data || result.emi_details || {};
+    const policyChecks = result.policy_checks || {};
+    const isPolicyRejected = !policyChecks.passed && !isApproved;
     const requestedAmount =
         result.requested_amount ?? (emiData.principal as number | undefined);
+
+    const annualRate = toNumber((emiData as Record<string, number>).interest_rate, 12);
+    const principalForEmi = toNumber(requestedAmount, toNumber((emiData as Record<string, number>).principal, 0));
+    const defaultTenureYears = Math.max(
+        1,
+        Math.round(toNumber((emiData as Record<string, number>).tenure_months, 36) / 12)
+    );
+
+    const [selectedTenureYears, setSelectedTenureYears] = useState(defaultTenureYears);
+    const [dynamicEmiData, setDynamicEmiData] = useState<Record<string, number> | null>(null);
+    const [emiLoading, setEmiLoading] = useState(false);
+    const [emiError, setEmiError] = useState("");
+
+    const tenureOptions = useMemo(() => [1, 2, 3, 4, 5], []);
+
+    useEffect(() => {
+        if (!isApproved || principalForEmi <= 0) {
+            setDynamicEmiData(null);
+            return;
+        }
+
+        setEmiLoading(true);
+        setEmiError("");
+
+        loanAPI
+            .calculateEMI({
+                principal: principalForEmi,
+                annual_rate: annualRate,
+                tenure_months: selectedTenureYears * 12,
+            })
+            .then((res) => {
+                setDynamicEmiData(res || null);
+            })
+            .catch((err) => {
+                setEmiError(err?.response?.data?.detail || "Unable to recalculate EMI.");
+                setDynamicEmiData(null);
+            })
+            .finally(() => setEmiLoading(false));
+    }, [isApproved, principalForEmi, annualRate, selectedTenureYears]);
+
+    const emiDisplay = dynamicEmiData || (emiData as Record<string, number>);
 
     const rawRiskFeatures = Array.isArray(result.explanation?.top_risk_features)
         ? result.explanation?.top_risk_features
@@ -177,6 +227,22 @@ export default function Results() {
                 </div>
 
             </motion.div>
+
+            {isPolicyRejected && (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+                    <p className="font-semibold">Rejected by Affordability Policy</p>
+                    <p className="text-sm mt-1">
+                        Your profile may be creditworthy, but the requested amount exceeds safe affordability limits.
+                    </p>
+                    {Array.isArray(policyChecks.reasons) && policyChecks.reasons.length > 0 && (
+                        <ul className="mt-2 text-sm list-disc pl-5">
+                            {policyChecks.reasons.map((reason) => (
+                                <li key={reason}>{reason}</li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
@@ -366,25 +432,44 @@ export default function Results() {
                 {isApproved && Object.keys(emiData).length > 0 && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100">
                         <h3 className="text-lg font-semibold mb-4">EMI Breakdown</h3>
+
+                        <div className="mb-4">
+                            <label className="block text-sm text-neutral-500 mb-1">Duration (Years)</label>
+                            <select
+                                value={selectedTenureYears}
+                                onChange={(e) => setSelectedTenureYears(Number(e.target.value))}
+                                className="w-full px-3 py-2 border border-neutral-200 rounded-lg"
+                            >
+                                {tenureOptions.map((years) => (
+                                    <option key={years} value={years}>
+                                        {years} Year{years > 1 ? "s" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {emiLoading && <p className="text-xs text-neutral-500 mb-2">Recalculating EMI...</p>}
+                        {emiError && <p className="text-xs text-rose-600 mb-2">{emiError}</p>}
+
                         <DataRow
                             label="Requested Amount"
                             value={formatCurrency(requestedAmount)}
                         />
                         <DataRow
                             label="Monthly EMI"
-                            value={formatCurrency(emiData.monthly_emi)}
+                            value={formatCurrency(emiDisplay.monthly_emi)}
                         />
                         <DataRow
                             label="Total Interest"
-                            value={formatCurrency(emiData.total_interest)}
+                            value={formatCurrency(emiDisplay.total_interest)}
                         />
                         <DataRow
                             label="Total Payment"
-                            value={formatCurrency(emiData.total_payment)}
+                            value={formatCurrency(emiDisplay.total_payment)}
                         />
                         <DataRow
                             label="Tenure (Months)"
-                            value={`${toNumber(emiData.tenure_months, 0)}`}
+                            value={`${toNumber(emiDisplay.tenure_months, 0)}`}
                         />
                     </div>
                 )}
