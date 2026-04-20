@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -29,14 +29,35 @@ export interface RegisterData {
     email: string;
     password: string;
     full_name: string;
-    user_type: 'applicant' | 'student' | 'unemployed' | 'underwriter' | 'risk_manager' | 'admin' | 'auditor';
+    user_type: 'applicant' | 'student';
     phone?: string;
+}
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    full_name: string;
+    user_type: string;
+    phone?: string;
+    created_at?: string;
+    is_active: boolean;
+    email_verified: boolean;
 }
 
 export interface User {
     email: string;
     full_name: string;
     user_type: string;
+}
+
+export interface ProfileData {
+    email: string;
+    full_name: string;
+    phone?: string;
+    user_type: string;
+    profile_image_url?: string;
+    kyc_verified: boolean;
+    created_at?: string;
 }
 
 export interface LoginResponse {
@@ -103,6 +124,18 @@ export const authAPI = {
         const response = await api.post('/auth/mfa/config', { email, enable });
         return response.data;
     },
+
+    adminListUsers: async () => {
+        const response = await api.get<{ users: AdminUser[] }>('/auth/admin/users');
+        return response.data;
+    },
+
+    adminUpdateUserRole: async (email: string, userType: 'underwriter' | 'risk_manager' | 'auditor') => {
+        const response = await api.patch(`/auth/admin/users/${encodeURIComponent(email)}/role`, {
+            user_type: userType,
+        });
+        return response.data;
+    },
 };
 
 export const loanAPI = {
@@ -137,6 +170,27 @@ export const dashboardAPI = {
         return response.data;
     }
 
+};
+
+export const profileAPI = {
+    getProfile: async () => {
+        const response = await api.get<ProfileData>('/profile/me');
+        return response.data;
+    },
+
+    uploadProfilePicture: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await api.post('/profile/me/picture', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data;
+    },
+
+    deleteProfilePicture: async () => {
+        const response = await api.delete('/profile/me/picture');
+        return response.data;
+    },
 };
 
 export const kycAPI = {

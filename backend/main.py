@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 
@@ -9,9 +10,9 @@ except Exception:
     load_dotenv = None
 
 try:
-    from routes import auth_routes, loan_routes, upload_routes, dashboard_routes, kyc_routes, workflow_routes, audit_routes, risk_routes
+    from routes import auth_routes, loan_routes, upload_routes, dashboard_routes, kyc_routes, workflow_routes, audit_routes, risk_routes, profile_routes
 except ModuleNotFoundError:
-    from .routes import auth_routes, loan_routes, upload_routes, dashboard_routes, kyc_routes, workflow_routes, audit_routes, risk_routes
+    from .routes import auth_routes, loan_routes, upload_routes, dashboard_routes, kyc_routes, workflow_routes, audit_routes, risk_routes, profile_routes
 
 app = FastAPI(title="AI Loan Underwriting System", version="1.0.0")
 
@@ -32,6 +33,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_routes.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(profile_routes.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(loan_routes.router, prefix="/api/loan", tags=["Loan"])
 app.include_router(upload_routes.router, prefix="/api/upload", tags=["Upload"])
 app.include_router(dashboard_routes.router, prefix="/api/dashboard", tags=["Dashboard"])
@@ -39,6 +41,11 @@ app.include_router(kyc_routes.router, prefix="/api/kyc", tags=["KYC"])
 app.include_router(workflow_routes.router, prefix="/api/workflow", tags=["Workflow"])
 app.include_router(audit_routes.router, prefix="/api/audit", tags=["Audit"])
 app.include_router(risk_routes.router, prefix="/api/risk", tags=["Risk"])
+
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+media_dir = os.path.join(backend_dir, "uploads")
+os.makedirs(media_dir, exist_ok=True)
+app.mount("/media", StaticFiles(directory=media_dir), name="media")
 
 @app.get("/")
 async def root():

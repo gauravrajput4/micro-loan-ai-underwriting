@@ -8,7 +8,8 @@ import {
     TrendingUp,
     Users,
     DollarSign,
-    CheckCircle
+    CheckCircle,
+    UserCog
 } from "lucide-react";
 
 import {
@@ -26,7 +27,9 @@ import {
     ResponsiveContainer
 } from "recharts";
 
-import { dashboardAPI } from "../services/api";
+import { authAPI, dashboardAPI, AdminUser } from "../services/api";
+
+const ASSIGNABLE_ROLES = ["underwriter", "risk_manager", "auditor"] as const;
 
 export default function AdminDashboard() {
 
@@ -37,6 +40,11 @@ export default function AdminDashboard() {
     const [creditDistribution,setCreditDistribution] = useState<any[]>([]);
     const [monthlyTrends,setMonthlyTrends] = useState<any[]>([]);
     const [statusDistribution,setStatusDistribution] = useState<any>({});
+    const [platformUsers, setPlatformUsers] = useState<AdminUser[]>([]);
+    const [userRoleDrafts, setUserRoleDrafts] = useState<Record<string, string>>({});
+    const [roleUpdateLoading, setRoleUpdateLoading] = useState<string>("");
+    const [roleError, setRoleError] = useState("");
+    const [roleSuccess, setRoleSuccess] = useState("");
 
     const normalizeStatus = (app: any) => {
         if (typeof app?.prediction === 'number') {
@@ -56,47 +64,78 @@ export default function AdminDashboard() {
         return 'bg-amber-100 text-amber-800';
     };
 
+    const loadAdminDashboard = async () => {
+        const data = await dashboardAPI.getAdminDashboard();
+        const summary = data.summary;
+
+        setStats([
+            {
+                label:"Total Applications",
+                value:summary.total_applications,
+                icon:Users,
+                color:"bg-blue-500"
+            },
+            {
+                label:"Approved Loans",
+                value:summary.approved_loans,
+                icon:CheckCircle,
+                color:"bg-green-500"
+            },
+            {
+                label:"Total Predictions",
+                value:summary.total_predictions,
+                icon:DollarSign,
+                color:"bg-purple-500"
+            },
+            {
+                label:"Success Rate",
+                value:`${summary.approval_rate}%`,
+                icon:TrendingUp,
+                color:"bg-orange-500"
+            }
+        ]);
+
+        setRecentApplications(data.recent_applications);
+        setCreditDistribution(data.credit_score_distribution);
+        setMonthlyTrends(data.monthly_trends);
+        setStatusDistribution(data.status_distribution);
+    };
+
+    const loadUsers = async () => {
+        const response = await authAPI.adminListUsers();
+        setPlatformUsers(response.users || []);
+        setUserRoleDrafts(
+            (response.users || []).reduce((acc: Record<string, string>, record: AdminUser) => {
+                acc[record.email] = ASSIGNABLE_ROLES.includes(record.user_type as any)
+                    ? record.user_type
+                    : "underwriter";
+                return acc;
+            }, {})
+        );
+    };
+
     useEffect(()=>{
-
-        dashboardAPI.getAdminDashboard().then(data=>{
-
-            const summary = data.summary;
-
-            setStats([
-                {
-                    label:"Total Applications",
-                    value:summary.total_applications,
-                    icon:Users,
-                    color:"bg-blue-500"
-                },
-                {
-                    label:"Approved Loans",
-                    value:summary.approved_loans,
-                    icon:CheckCircle,
-                    color:"bg-green-500"
-                },
-                {
-                    label:"Total Predictions",
-                    value:summary.total_predictions,
-                    icon:DollarSign,
-                    color:"bg-purple-500"
-                },
-                {
-                    label:"Success Rate",
-                    value:`${summary.approval_rate}%`,
-                    icon:TrendingUp,
-                    color:"bg-orange-500"
-                }
-            ]);
-
-            setRecentApplications(data.recent_applications);
-            setCreditDistribution(data.credit_score_distribution);
-            setMonthlyTrends(data.monthly_trends);
-            setStatusDistribution(data.status_distribution);
-
+        Promise.all([loadAdminDashboard(), loadUsers()]).catch(() => {
+            setRoleError("Unable to load some admin dashboard data.");
         });
-
     },[]);
+
+    const handleRoleUpdate = async (email: string) => {
+        const nextRole = userRoleDrafts[email] as "underwriter" | "risk_manager" | "auditor";
+        if (!nextRole) return;
+        setRoleError("");
+        setRoleSuccess("");
+        setRoleUpdateLoading(email);
+        try {
+            await authAPI.adminUpdateUserRole(email, nextRole);
+            setRoleSuccess(`Role updated for ${email}`);
+            await loadUsers();
+        } catch (err: any) {
+            setRoleError(err?.response?.data?.detail || "Failed to update role");
+        } finally {
+            setRoleUpdateLoading("");
+        }
+    };
 
     return (
 
@@ -382,6 +421,70 @@ export default function AdminDashboard() {
                                 </tr>
                             );
                         })}
+                        </tbody>
+                    </table>
+                </div>
+            </motion.div>
+
+            <motion.div className="bg-white rounded-xl shadow-sm border">
+                <div className="p-6 border-b flex items-center gap-2">
+                    <UserCog size={20} className="text-blue-600" />
+                    <h2 className="text-xl font-semibold">Role Management</h2>
+                </div>
+
+                {(roleError || roleSuccess) && (
+                    <div className="px-6 pt-4">
+                        {roleError && <p className="text-sm text-red-600">{roleError}</p>}
+                        {roleSuccess && <p className="text-sm text-green-600">{roleSuccess}</p>}
+                    </div>
+                )}
+
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Email</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Current Role</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Assign Operational Role</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {platformUsers.map((platformUser) => (
+                                <tr key={platformUser.id}>
+                                    <td className="px-6 py-4">{platformUser.full_name || "-"}</td>
+                                    <td className="px-6 py-4">{platformUser.email}</td>
+                                    <td className="px-6 py-4 capitalize">{platformUser.user_type.replace("_", " ")}</td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                            <select
+                                                value={userRoleDrafts[platformUser.email] || "underwriter"}
+                                                onChange={(e) => {
+                                                    setUserRoleDrafts((prev) => ({
+                                                        ...prev,
+                                                        [platformUser.email]: e.target.value,
+                                                    }));
+                                                }}
+                                                className="px-3 py-2 rounded-lg border border-gray-300 text-sm"
+                                            >
+                                                {ASSIGNABLE_ROLES.map((roleOption) => (
+                                                    <option key={roleOption} value={roleOption}>
+                                                        {roleOption.replace("_", " ")}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRoleUpdate(platformUser.email)}
+                                                disabled={roleUpdateLoading === platformUser.email}
+                                                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                                            >
+                                                {roleUpdateLoading === platformUser.email ? "Saving..." : "Update"}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>

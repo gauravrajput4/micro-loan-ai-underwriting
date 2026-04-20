@@ -12,7 +12,7 @@ import EmiCalculator from './pages/EmiCalculator';
 import KycVerification from './pages/KycVerification';
 import LoanQueue from './pages/LoanQueue';
 import AuditViewer from './pages/AuditViewer';
-import SecuritySettings from './pages/SecuritySettings';
+import Profile from './pages/Profile';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -34,7 +34,7 @@ export default function App() {
               <Route path="kyc" element={<KycVerification />} />
               <Route path="cases" element={<ProtectedRoute allowedRoles={["underwriter", "risk_manager", "admin"]}><LoanQueue /></ProtectedRoute>} />
               <Route path="audit" element={<ProtectedRoute allowedRoles={["auditor", "admin", "risk_manager"]}><AuditViewer /></ProtectedRoute>} />
-              <Route path="security" element={<SecuritySettings />} />
+              <Route path="profile" element={<Profile />} />
             </Route>
           </Routes>
         </AnimatePresence>

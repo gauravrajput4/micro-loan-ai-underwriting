@@ -9,7 +9,7 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
-const STORAGE_KEY = 'edulend-theme';
+const STORAGE_KEY = 'LoanMint-theme';
 
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') {

@@ -8,7 +8,7 @@ def send_email(to_email: str, subject: str, body: str, html_body: str | None = N
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER")
     smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@edulend.com")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@LoanMint.com")
     use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
     if not smtp_host:

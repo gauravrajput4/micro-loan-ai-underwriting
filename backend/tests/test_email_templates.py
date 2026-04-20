@@ -16,7 +16,7 @@ class TestEmailTemplates(unittest.TestCase):
             reasons=["Strong savings ratio"],
             recommendations=["Complete KYC"],
         )
-        self.assertIn("EduLend", payload["html"])
+        self.assertIn("LoanMint", payload["html"])
         self.assertIn("Approved", payload["html"])
         self.assertIn("Loan Approval", payload["subject"])
 
@@ -39,7 +39,7 @@ class TestEmailTemplates(unittest.TestCase):
             expiry_minutes=5,
         )
         self.assertIn("123456", payload["html"])
-        self.assertIn("EduLend", payload["html"])
+        self.assertIn("LoanMint", payload["html"])
         self.assertIn("Verification Code", payload["subject"])
 
     def test_password_reset_template_contains_token(self):

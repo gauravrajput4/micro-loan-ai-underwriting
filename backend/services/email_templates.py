@@ -1,7 +1,7 @@
 from html import escape
 from typing import Iterable
 
-COMPANY_NAME = "EduLend"
+COMPANY_NAME = "LoanMint"
 COMPANY_TAGLINE = "AI-powered fair financing for education and essential needs"
 
 

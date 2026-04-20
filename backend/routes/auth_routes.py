@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import os
 import secrets
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 
@@ -24,8 +24,10 @@ try:
     from ..services.security import (
         canonical_email,
         create_access_token,
+        get_current_user,
         issue_refresh_token,
         refresh_session,
+        require_roles,
         revoke_refresh_token,
     )
 except (ModuleNotFoundError, ImportError):
@@ -41,8 +43,10 @@ except (ModuleNotFoundError, ImportError):
     from services.security import (
         canonical_email,
         create_access_token,
+        get_current_user,
         issue_refresh_token,
         refresh_session,
+        require_roles,
         revoke_refresh_token,
     )
 
@@ -63,6 +67,8 @@ ALLOWED_ROLES = {
     "student",
     "unemployed",
 }
+SELF_SIGNUP_ROLES = {"applicant", "student"}
+ADMIN_ASSIGNABLE_ROLES = {"underwriter", "risk_manager", "auditor"}
 
 class UserRegister(BaseModel):
     email: str = Field(...,)
@@ -108,6 +114,10 @@ class PasswordResetConfirm(BaseModel):
 class MFAConfigRequest(BaseModel):
     email: str
     enable: bool = True
+
+
+class AdminRoleUpdateRequest(BaseModel):
+    user_type: str
 
 
 class SignupOTPRequest(BaseModel):
@@ -267,6 +277,8 @@ async def register(user: UserRegister):
         raise HTTPException(status_code=400, detail="Verify email OTP before registration")
     
     role = user.user_type.strip().lower()
+    if role not in SELF_SIGNUP_ROLES:
+        raise HTTPException(status_code=403, detail="Only applicant and student roles are allowed during signup")
     if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail="Invalid user_type")
 
@@ -507,4 +519,74 @@ async def mfa_config(payload: MFAConfigRequest):
         metadata={"enabled": payload.enable},
     )
     return {"message": f"MFA {'enabled' if payload.enable else 'disabled'}"}
+
+
+@router.get("/admin/users")
+async def admin_list_users(_admin=Depends(require_roles("admin"))):
+    users = []
+    for user in users_collection.find({}, {"password": 0}).sort("created_at", -1):
+        users.append(
+            {
+                "id": str(user.get("_id")),
+                "email": user.get("email", ""),
+                "full_name": user.get("full_name", ""),
+                "user_type": user.get("user_type", "applicant"),
+                "phone": user.get("phone", ""),
+                "created_at": user.get("created_at"),
+                "is_active": bool(user.get("is_active", True)),
+                "email_verified": bool(user.get("email_verified", False)),
+            }
+        )
+    return {"users": users}
+
+
+@router.patch("/admin/users/{email}/role")
+async def admin_update_user_role(
+    email: str,
+    payload: AdminRoleUpdateRequest,
+    current_user=Depends(get_current_user),
+    _admin=Depends(require_roles("admin")),
+):
+    target_email = canonical_email(email)
+    target_role = payload.user_type.strip().lower()
+
+    if target_role not in ADMIN_ASSIGNABLE_ROLES:
+        raise HTTPException(status_code=400, detail="Role not allowed from admin assignment")
+
+    user = users_collection.find_one({"email": target_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    previous_role = user.get("user_type", "applicant")
+    users_collection.update_one(
+        {"email": target_email},
+        {
+            "$set": {
+                "user_type": target_role,
+                "role_updated_at": datetime.utcnow(),
+                "role_updated_by": current_user.get("email"),
+            }
+        },
+    )
+
+    log_audit_event(
+        action="auth.role.update",
+        actor_email=current_user.get("email", "system"),
+        actor_role=current_user.get("role", "admin"),
+        entity_type="user",
+        entity_id=str(user.get("_id", target_email)),
+        metadata={
+            "target_email": target_email,
+            "previous_role": previous_role,
+            "new_role": target_role,
+        },
+    )
+
+    return {
+        "message": "User role updated",
+        "email": target_email,
+        "previous_role": previous_role,
+        "user_type": target_role,
+    }
+
 

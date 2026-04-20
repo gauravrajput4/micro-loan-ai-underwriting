@@ -42,6 +42,32 @@ MongoDB Database
 - Python 3.8+
 - Node.js 16+
 - MongoDB 4.4+
+- Docker + Docker Compose (optional, recommended for one-command setup)
+
+## 🐳 Run With Docker
+
+From the project root:
+
+```bash
+docker compose up --build
+```
+
+Services:
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8000`
+- MongoDB: `mongodb://localhost:27017`
+
+Stop and remove containers:
+
+```bash
+docker compose down
+```
+
+Stop and remove containers + database volume:
+
+```bash
+docker compose down -v
+```
 
 ## 🛠️ Installation
 

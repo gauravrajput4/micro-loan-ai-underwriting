@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, ArrowRight, User, Shield, Moon, Sun } from 'lucide-react';
+import { GraduationCap, ArrowRight, User, Moon, Sun } from 'lucide-react';
 import { authAPI, LoginData, RegisterData } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -11,7 +11,7 @@ export default function Login() {
   const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
-  const [userType, setUserType] = useState<'applicant' | 'student' | 'unemployed' | 'underwriter' | 'risk_manager' | 'admin' | 'auditor'>('applicant');
+  const [userType, setUserType] = useState<'applicant' | 'student'>('applicant');
   const [loading, setLoading] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [error, setError] = useState('');
@@ -130,7 +130,7 @@ export default function Login() {
               <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
                 <GraduationCap size={24} className="text-white" />
               </div>
-              <span className="font-semibold text-2xl tracking-tight">EduLend</span>
+              <span className="font-semibold text-2xl tracking-tight">LoanMint</span>
             </div>
             
             <motion.h1 
@@ -160,7 +160,7 @@ export default function Login() {
               {isSignUp ? 'Create your account' : 'Welcome back'}
             </h2>
             <p className="text-neutral-500 mb-8">
-              {isSignUp ? 'Join EduLend to apply for your loan.' : 'Sign in to manage your loan application.'}
+              {isSignUp ? 'Join LoanMint to apply for your loan.' : 'Sign in to manage your loan application.'}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -198,15 +198,10 @@ export default function Login() {
               {isSignUp && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
                   <label className="block text-sm font-medium text-neutral-700 mb-1.5">User Type</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { value: 'applicant', icon: User, label: 'Applicant' },
-                      { value: 'student', icon: GraduationCap, label: 'Student' },
-                      { value: 'unemployed', icon: User, label: 'Unemployed' },
-                      { value: 'underwriter', icon: Shield, label: 'Underwriter' },
-                      { value: 'risk_manager', icon: Shield, label: 'Risk' },
-                      { value: 'auditor', icon: Shield, label: 'Auditor' },
-                      { value: 'admin', icon: Shield, label: 'Admin' }
+                      { value: 'student', icon: GraduationCap, label: 'Student' }
                     ].map(({ value, icon: Icon, label }) => (
                       <button
                         key={value}

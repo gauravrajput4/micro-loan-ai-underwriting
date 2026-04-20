@@ -6,6 +6,7 @@ import {
   FileText,
   Upload,
   Calculator,
+  CircleUserRound,
   ShieldCheck,
   ListChecks,
   LogOut,
@@ -34,8 +35,8 @@ export default function Layout() {
 
     const baseItems = [
       { path: '/dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+      { path: '/profile', label: 'Profile', icon: CircleUserRound },
       { path: '/calculator', label: 'EMI Calculator', icon: Calculator },
-      { path: '/security', label: 'Security', icon: ShieldCheck },
     ];
 
     if (['admin', 'underwriter', 'risk_manager', 'auditor'].includes(role)) {
@@ -102,7 +103,7 @@ export default function Layout() {
           <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
             <GraduationCap size={20} />
           </div>
-          <span className="font-semibold text-lg tracking-tight">EduLend</span>
+          <span className="font-semibold text-lg tracking-tight">LoanMint</span>
         </div>
 
         {mobile && (
@@ -178,7 +179,7 @@ export default function Layout() {
           <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
             <GraduationCap size={16} />
           </div>
-          <span className="font-semibold tracking-tight">EduLend</span>
+          <span className="font-semibold tracking-tight">LoanMint</span>
         </div>
 
         <button
